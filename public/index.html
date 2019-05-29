@@ -1,0 +1,87 @@
+<!doctype html>
+<head>
+</head>
+<body>
+
+    <div class="sidebar" style="position: fixed">
+        <h1 class="col-md-12" style="letter-spacing: -0.07em;">Auditool</h1>
+        <div id="backup-upload-area" class="input-group col-md-12">
+            <div class="custom-file">
+                <input type="file" class="custom-file-input" id="choose-backup-file" aria-describedby="inputGroupFileAddon01">
+                <label class="custom-file-label" for="choose-backup-file">选择.BAK文件</label>
+            </div>
+        </div>
+
+        <div class="label col-md-12" style=" margin-bottom:10px;" id="indicator">就绪</div>
+
+    </div>
+
+    <div class="container" id="container" style="margin-top:10px;">
+        <div id="table-area" class="col-md-12" ></div>
+    </div>
+</body>
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+<script src="./socket.io.slim.js" crossorigin="anonymous"></script>
+<script src="./file-send.js" crossorigin="anonymous"></script>
+<script>
+
+var socket = io.connect(),
+    tables = {};
+
+let backupFile = new FileSend();
+
+backupFile.setStartFunc((instance) =>{
+    socket.emit('start', {
+        name: instance.file.name,
+        size: instance.file.size
+    });
+});
+
+backupFile.setOnload((event, instance) => {
+    socket.emit('upload', {
+        name: instance.file.name,
+        segment: event.target.result
+    });
+});
+
+
+$('#choose-backup-file').on('change', function () {
+    backupFile.start('choose-backup-file');
+});
+
+var updateIndicator = function(message){
+    document.getElementById('indicator').innerText = message;
+}
+
+var updateIndicatorErr = function(message){
+    document.getElementById('indicator').innerText += "\n" + message;
+}
+
+socket.on('more', function (data) { 
+    updateIndicator("已上传 " + data.percent.toFixed(1)+"% 注意请不要这个时候刷新页面");
+    backupFile.readSlice(data.position);
+});
+
+socket.on('msg', function (data) {
+    switch(data.type){
+        case "UPLOAD_DONE":
+            backupFile.dispose();
+            updateIndicator("上传完成。准备恢复数据");
+            break;
+        case "RESTORE_PROGRESS":
+            console.log("restoring", data);
+            updateIndicator(`正在恢复数据，已完成${data.data.percent_complete}，预计剩余时间${data.data.est_remaining_time}`);
+            break;
+        case "RESTORE_DONE":
+            updateIndicator("数据恢复完成，准备显示数据。");
+            break;
+        case "DATA":
+            updateIndicator(`接收到数据表 :[${data.tableName}]`);
+            Object.assign(tables, {[data.tableName]:data.data});
+            break;
+
+        default :
+            updateIndicatorErr("服务器发来了不知道什么类型的消息，有可能是个bug : ["+ JSON.stringify(data) + "]");
+    }
+});
+</script>
