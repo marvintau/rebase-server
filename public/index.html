@@ -5,11 +5,14 @@
 
     <div class="sidebar" style="position: fixed">
         <h1 class="col-md-12" style="letter-spacing: -0.07em;">Auditool</h1>
-        <div id="backup-upload-area" class="input-group col-md-12">
-            <div class="custom-file">
-                <input type="file" class="custom-file-input" id="choose-backup-file" aria-describedby="inputGroupFileAddon01">
-                <label class="custom-file-label" for="choose-backup-file">选择.BAK文件</label>
-            </div>
+
+        <div id="uploaded-list">
+        </div>
+
+        <div id="backup-upload">
+            <input id="company-name" placeholder="帐套所属公司名称">
+            <input type="file" class="custom-file-input" id="choose-backup-file">
+            <button id="upload" onclick="startUpload()">上传</button>
         </div>
 
         <div class="label col-md-12" style=" margin-bottom:10px;" id="indicator">就绪</div>
@@ -20,7 +23,6 @@
         <div id="table-area" class="col-md-12" ></div>
     </div>
 </body>
-<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
 <script src="./socket.io.slim.js" crossorigin="anonymous"></script>
 <script src="./file-send.js" crossorigin="anonymous"></script>
 <script>
@@ -33,6 +35,7 @@ let backupFile = new FileSend();
 backupFile.setStartFunc((instance) =>{
     socket.emit('start', {
         name: instance.file.name,
+        destName: instance.destName,
         size: instance.file.size
     });
 });
@@ -44,10 +47,11 @@ backupFile.setOnload((event, instance) => {
     });
 });
 
+let startUpload = function () {
+    let companyName = document.getElementById('company-name').value;
+    backupFile.start('choose-backup-file', `${companyName}.bak`);
+}
 
-$('#choose-backup-file').on('change', function () {
-    backupFile.start('choose-backup-file');
-});
 
 var updateIndicator = function(message){
     document.getElementById('indicator').innerText = message;
@@ -57,8 +61,10 @@ var updateIndicatorErr = function(message){
     document.getElementById('indicator').innerText += "\n" + message;
 }
 
+socket.emit('backupFileList', {});
+
 socket.on('more', function (data) { 
-    updateIndicator("已上传 " + data.percent.toFixed(1)+"% 注意请不要这个时候刷新页面");
+    updateIndicator("已上传 " + data.percent+"% 注意请不要这个时候刷新页面");
     backupFile.readSlice(data.position);
 });
 
@@ -70,7 +76,7 @@ socket.on('msg', function (data) {
             break;
         case "RESTORE_PROGRESS":
             console.log("restoring", data);
-            updateIndicator(`正在恢复数据，已完成${data.data.percent_complete}，预计剩余时间${data.data.est_remaining_time}`);
+            updateIndicator(`正在恢复数据，已完成${data.data.percent_complete.toFixed(2)}%，预计剩余时间${data.data.est_remaining_time}`);
             break;
         case "RESTORE_DONE":
             updateIndicator("数据恢复完成，准备显示数据。");
@@ -84,4 +90,8 @@ socket.on('msg', function (data) {
             updateIndicatorErr("服务器发来了不知道什么类型的消息，有可能是个bug : ["+ JSON.stringify(data) + "]");
     }
 });
+
+socket.on('backupFileList', function(data){
+    
+})
 </script>

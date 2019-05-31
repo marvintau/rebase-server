@@ -4,6 +4,8 @@ import path from 'path';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 
+const fs = require('fs').promises;
+
 import FileRecv from './file-recv.js';
 const Files = {};
 
@@ -19,6 +21,9 @@ sql.connect(config).then(function(){
     sql.close();
 }).catch((err) => {
     console.log('failed', err);
+}).finally(() => {
+    console.log('SQL closed')
+    sql.close();
 })
 
 var app = express();
@@ -69,18 +74,12 @@ var recordRestoreProgress = function(pool){
     return pool.request().query(query);
 }
 
-var fetchTable = function (pool, tableName){
-
-    let req = pool.request();
-    return req.query("use rebase; select * from "+tableName+";");
-}
-
 io.sockets.on('connection', function (socket) {
 
     socket.on('start', function (data) { 
 
         var fileStub;
-        Files[data.name] = fileStub = new FileRecv(data.size, path.join('D:/temp', data.name));
+        Files[data.name] = fileStub = new FileRecv(data.size, path.join('D:/temp', data.destName));
 
         fileStub.open().then(function(fd){
             console.log("[start] file " + data.name + " desc created, ready to receive more.");
@@ -91,20 +90,13 @@ io.sockets.on('connection', function (socket) {
         });
     });
 
-    socket.on('single-table-request', function(message){
-
-        sql.connect(config)
-        .then(function(pool){
-            return fetchTable(pool);
-        }).then(function(res){
-            console.log(Object.keys(res));
-            socket.emit('msg', {type:"VOUCHER", voucher: res.recordset});
-        }).catch(function(err){
-            socket.emit('err', {type: err});
-        }).finally(function(){
-            sql.close();
-        });
-    });
+    socket.on('backupFileList', function(){
+        console.log('received')
+        //passsing directoryPath and callback function
+        fs.readdir("D:/temp/").then((res)=>{
+            console.log(res);
+        })
+    })
 
     socket.on('upload', function (data) {
 
@@ -123,36 +115,37 @@ io.sockets.on('connection', function (socket) {
 
                 return new Promise(function(resolve, reject){
                     console.log('begin restoring');
-                    restore(pool, fileStub.filePath);
+                    restore(pool, fileStub.filePath).catch(err=>{
+                        console.error(err);
+                        socket.emit('msg', {type:"ERROR", data:{err, from:"restore"}})
+                    });
 
-                    (function polling(){
+                    (function polling(pool){
                         recordRestoreProgress(pool).then(function(res){
+                            console.log(res);
                             socket.emit('msg', { type:"RESTORE_PROGRESS", data : res.recordset[0] });
-                            if(res.recordset[0].percent_complete === 100){
+                            if(res.recordset.length === 0){
+                                setTimeout(polling, 500, pool);
+                            }
+                            else if(res.recordset[0].percent_complete === 100){
                                 console.log('polling done');
                                 resolve();
                             } else {
-                                setTimeout(polling, 888);
+                                setTimeout(polling, 888, pool);
                             }
                         }).catch(err=>{
-                            // console.log(err);
-                            socket.emit('msg', {type:"ERROR", data: err})
+                            socket.emit('msg', {type:"ERROR", data: {err, from:"polling"}})
                         })
-                    })();
+                    })(pool);
                 })
 
              
             }).then(function(res){
-                console.log(res);
                 socket.emit('msg', {type:"RESTORE_DONE"});
-                return fetchTable(pool, "code");
             }).then(function(){
                 console.log('done');
                 fileStub = undefined;
-            }).catch(function(err){
-                socket.emit('err', {type: err});
-                console.error(err);
-            });
+            })
         
         } else if (fileStub.data.length > 10485760) { //buffer >= 10MB
             fileStub.write().then(function(){

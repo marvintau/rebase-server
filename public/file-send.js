@@ -1,6 +1,7 @@
 class FileSend {
 
     constructor(){
+        this.destName   = undefined;
         this.file       = undefined;
         this.fileReader = new FileReader();
         this.blockSize  = 524288; 
@@ -11,8 +12,9 @@ class FileSend {
      * starting the file upload by returning a promise.
      * @param {string} id associate file with the file input.
      */
-    start(id){
+    start(id, destName){
         this.file = document.getElementById(id).files[0];
+        this.destName = destName;
 
         console.log("started");
 

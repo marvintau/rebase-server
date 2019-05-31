@@ -13,7 +13,7 @@ export default class FileRecv {
     }
 
     getPercent () {
-        return parseInt((this.currLen / this.fileSize) * 100);
+        return parseFloat((this.currLen / this.fileSize) * 100);
     };
     getPosition () {
         return this.currLen / this.blockSize;
@@ -50,7 +50,7 @@ export default class FileRecv {
     progress(){
         return  {
             'position': this.getPosition(),
-            'percent':  this.getPercent()
+            'percent':  this.getPercent().toFixed(2)
         }
     }
 }
